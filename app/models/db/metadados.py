@@ -10,3 +10,9 @@ METADADOS = {
     "Pedido": ["idPedido", "Status_idStatus", "DataPedido", "ValorTotalPedido", "Cliente_idCliente"],
     "Pedido_has_Produto": ["idPedidoProduto", "Pedido_idPedido", "Produto_idProduto", "Quantidade", "PrecoUnitario"]
 }
+
+OPERATORS = [
+    '=', '<>', '!=',   # operadores de comparação
+    '<', '<=', '>', '>=',
+    'AND'
+]
