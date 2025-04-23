@@ -5,6 +5,37 @@ class QueryManager:
     """
     Valida SELECT, FROM, JOIN e WHERE com base nos metadados.
     """
+<<<<<<< HEAD
+=======
+    def is_where_valid(self, parsed):
+        if not parsed.get('where'):
+            return True  # WHERE é opcional
+        
+        # Extrair condições usando regex
+        conditions = re.split(r'(?i)\s+and\s+', parsed['where'])
+        
+        for condition in conditions:
+            # Verificar cada operador lógico
+            matches = re.findall(r'([\w\.]+)\s*([<>=!]+)\s*([\w\.\'\"]+)', condition)
+            if not matches:
+                return False
+                
+            for left, op, right in matches:
+                # Se o lado esquerdo é uma coluna (tem formato table.column)
+                if '.' in left:
+                    table, column = left.split('.')
+                    if not self.is_valid_table(table) or not self.is_valid_value(column, table):
+                        return False
+                
+                # Se o lado direito é uma coluna (não é um valor literal)
+                if '.' in right and not (right.startswith("'") or right.startswith('"')):
+                    table, column = right.split('.')
+                    if not self.is_valid_table(table) or not self.is_valid_value(column, table):
+                        return False
+        
+        return True
+
+>>>>>>> 11dad42 (reformulação da algebra otimizada e tentativa de geração dos graficos)
     def __init__(self):
         # Padroniza nomes de tabelas e colunas em UPPER
         self._metadata = {
@@ -44,10 +75,18 @@ class QueryManager:
                     return False
         return True
 
+<<<<<<< HEAD
+=======
+    
+>>>>>>> 11dad42 (reformulação da algebra otimizada e tentativa de geração dos graficos)
     def is_query_valid(self, parsed):
         return (
             self.is_select_valid(parsed)
             and self.is_from_valid(parsed)
             and self.is_join_valid(parsed)
+<<<<<<< HEAD
             # and self.is_where_valid(parsed)  # se implementar
+=======
+            and self.is_where_valid(parsed) 
+>>>>>>> 11dad42 (reformulação da algebra otimizada e tentativa de geração dos graficos)
         )
