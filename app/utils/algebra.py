@@ -1,8 +1,5 @@
 import regex as re
-<<<<<<< HEAD
-=======
 from models.db.metadados import METADADOS
->>>>>>> 11dad42 (reformulação da algebra otimizada e tentativa de geração dos graficos)
 
 def sql_to_algebra(parsed_sql):
     """
@@ -30,10 +27,9 @@ def sql_to_algebra(parsed_sql):
     # 4) Aplicar projeção sobre todo o resultado
     return f"{projection}({expr})"
 
-<<<<<<< HEAD
 def extract_tables(expression: str):
     return re.findall(r'(\w+)\s*\⨝?', expression)
-=======
+
 def extract_tables(expression):
     """Extrai todas as tabelas da expressão de álgebra relacional"""
     # Padrão melhorado para capturar tabelas, excluindo operadores e funções da álgebra
@@ -42,7 +38,6 @@ def extract_tables(expression):
     
     # Filtrar operadores da álgebra relacional e outros não-tabelas
     return [t for t in tables if t not in ('π', 'σ', 'and', 'or', 'AND', 'OR')]
->>>>>>> 11dad42 (reformulação da algebra otimizada e tentativa de geração dos graficos)
     
 def extract_conditions(expression: str):
     condition_match = re.search(r'σ\[(.*?)\]', expression)
@@ -56,7 +51,6 @@ def extract_projection(expression: str):
         return [cond.strip() for cond in re.split(r'(?i) and ', projection_match.group(1))]
     return []
 
-<<<<<<< HEAD
 def optimize_algebra(expression: str) -> str:
     projection = extract_projection(expression)
     conditions = extract_conditions(expression)
@@ -79,7 +73,7 @@ def optimize_algebra(expression: str) -> str:
     if projection:
         return f"π[{', '.join(projection)}]({join_expr})"
     return join_expr
-=======
+
 def optimize_algebra(expression):
     """
     Otimiza a expressão de álgebra relacional usando as seguintes heurísticas:
@@ -218,4 +212,3 @@ def optimize_algebra(expression):
         join_tree = f"π[{projection_str}]({join_tree})"
     
     return join_tree
->>>>>>> 11dad42 (reformulação da algebra otimizada e tentativa de geração dos graficos)

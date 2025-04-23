@@ -5,8 +5,6 @@ class QueryManager:
     """
     Valida SELECT, FROM, JOIN e WHERE com base nos metadados.
     """
-<<<<<<< HEAD
-=======
     def is_where_valid(self, parsed):
         if not parsed.get('where'):
             return True  # WHERE é opcional
@@ -35,7 +33,6 @@ class QueryManager:
         
         return True
 
->>>>>>> 11dad42 (reformulação da algebra otimizada e tentativa de geração dos graficos)
     def __init__(self):
         # Padroniza nomes de tabelas e colunas em UPPER
         self._metadata = {
@@ -75,18 +72,10 @@ class QueryManager:
                     return False
         return True
 
-<<<<<<< HEAD
-=======
-    
->>>>>>> 11dad42 (reformulação da algebra otimizada e tentativa de geração dos graficos)
     def is_query_valid(self, parsed):
         return (
             self.is_select_valid(parsed)
             and self.is_from_valid(parsed)
             and self.is_join_valid(parsed)
-<<<<<<< HEAD
-            # and self.is_where_valid(parsed)  # se implementar
-=======
             and self.is_where_valid(parsed) 
->>>>>>> 11dad42 (reformulação da algebra otimizada e tentativa de geração dos graficos)
         )
