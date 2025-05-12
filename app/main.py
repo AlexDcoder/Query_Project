@@ -1,161 +1,190 @@
-# graph_generator.py
-# Gerador de grafo de operadores a partir da árvore de Álgebra Relacional otimizada
+# app/main.py
 
-import networkx as nx
-import matplotlib.pyplot as plt
-import tempfile
+import streamlit as st
 import os
-import textwrap
-from relational_algebra import Relation, Selection, Projection, Join
-import matplotlib.patches as mpatches
+from PIL import Image
 
-# Função para gerar labels mais curtos e legíveis para os nós do grafo
-def resumir_label(node, max_len=30):
-    # Projeção: mostra π e as primeiras colunas
-    if isinstance(node, Projection):
-        cols = ', '.join(node.attributes[:2])
-        if len(node.attributes) > 2:
-            cols += ', ...'
-        return f"π{{{cols}}}"
-    # Seleção: mostra σ e condição resumida
-    elif isinstance(node, Selection):
-        cond = str(node.condition)
-        if len(cond) > 15:
-            cond = cond[:12] + '...'
-        return f"σ{{{cond}}}"
-    # Junção: mostra ⋈ e condição resumida
-    elif isinstance(node, Join):
-        cond = str(node.condition)
-        if len(cond) > 15:
-            cond = cond[:12] + '...'
-        return f"⋈{{{cond}}}"
-    # Relação base (tabela): mostra apenas o nome
-    elif isinstance(node, Relation):
-        return node.name
-    # Outros casos: corta o label se for muito longo
-    else:
-        label = str(node)
-        return label[:max_len] + ("..." if len(label) > max_len else "")
+# Importar nossos módulos
+from parser import parse_sql, SQLParseError
+from relational_algebra import ast_to_relational_algebra
+from optimizer import optimize_query
+from graph_generator import generate_operator_graph
+from execution_plan import get_execution_steps
+from metadata import TABLES
 
-# Função principal para gerar o grafo de operadores
-def generate_operator_graph(original_tree, optimized_tree):
-    """
-    Gera um grafo hierárquico para a árvore de Álgebra Relacional otimizada,
-    com layout bottom-up, espaçamento controlado, labels quebrados em múltiplas linhas,
-    e estilos distintos por tipo de nó, incluindo legenda de cores.
-    """
-    tree = optimized_tree
-    G = nx.DiGraph().to_directed()
+# Configuração da página
+st.set_page_config(
+    page_title="Processador de Consultas SQL",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-    # Função recursiva para construir o grafo
-    def _add(node, is_root=False):
-        nid = id(node)  # ID único baseado no objeto
-        if nid in G:
-            return  # Evita duplicação
-        # Gera label e quebra de linha para melhor visualização
-        short_label = resumir_label(node, 30)
-        wrapped_label = textwrap.fill(short_label, width=18)
+st.title("Processador de Consultas SQL")
+st.markdown("### Visualizador e Otimizador de Árvores de Álgebra Relacional")
 
-        # Define tipo de nó e forma visual
-        if isinstance(node, Relation):
-            ntype, shape = 'table', 'o'
-        elif isinstance(node, Join):
-            ntype, shape = 'join', 'D'
-        elif isinstance(node, Selection):
-            ntype, shape = 'where', 's'
-        elif isinstance(node, Projection):
-            ntype, shape = 'select', 's'
-        else:
-            ntype, shape = 'other', 'o'
+# --- Inicializa o estado da sessão ---
+for key in (
+    'sql_query',
+    'parsed_sql',
+    'relational_algebra',
+    'optimized_algebra',
+    'ra_optimization_steps',
+    'operator_graph',
+    'execution_plan'
+):
+    if key not in st.session_state:
+        # ra_optimization_steps deve ser lista vazia por padrão
+        st.session_state[key] = [] if key == 'ra_optimization_steps' else None
 
-        # Aumenta a borda do nó raiz para destaque
-        border = 4.0 if is_root else 1.0
+# --- Sidebar: metadados e exemplos ---
+with st.sidebar:
+    st.header("Metadados do Banco")
+    st.markdown("**Tabelas Disponíveis**")
+    for tbl, cols in TABLES.items():
+        with st.expander(tbl):
+            st.write(", ".join(cols))
 
-        # Adiciona o nó ao grafo com os atributos visuais
-        G.add_node(nid, label=wrapped_label, type=ntype, shape=shape, tooltip=str(node), border=border)
-
-        # Adiciona filhos: operadores unários ou binários
-        if hasattr(node, 'child'):  # Operador unário (ex: seleção, projeção)
-            _add(node.child)
-            G.add_edge(nid, id(node.child))
-        elif hasattr(node, 'left') and hasattr(node, 'right'):  # Operador binário (ex: junção)
-            for sub in (node.left, node.right):
-                _add(sub)
-                G.add_edge(nid, id(sub))
-
-    _add(tree, is_root=True)
-
-    # Layout do grafo (spring_layout usado como fallback ao Graphviz)
-    pos = nx.spring_layout(G, seed=0)
-
-    # Criação do gráfico com Matplotlib
-    fig, ax = plt.subplots(figsize=(18, 12))  # Aumenta o tamanho para melhor visualização
-
-    # Mapeamento de tipos para cores
-    color_map = {
-        'table':  'lightcoral',
-        'join':   'lightgoldenrodyellow',
-        'where':  'lightgreen',
-        'select': 'lightskyblue',
-        'other':  'lightgrey'
-    }
-
-    # Desenha os nós agrupados por forma
-    for shape in set(nx.get_node_attributes(G, 'shape').values()):
-        nodes = [n for n, d in G.nodes(data=True) if d['shape'] == shape]
-        colors = [color_map[G.nodes[n]['type']] for n in nodes]
-        borders = [G.nodes[n].get('border', 1.0) for n in nodes]
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=nodes,
-            node_color=colors,
-            node_shape=shape,
-            node_size=2200,
-            linewidths=borders,
-            edgecolors='black',
-            alpha=0.95,
-            ax=ax
+    st.markdown("**Consultas de Exemplo**")
+    example_queries = {
+        "Consulta Simples":       "SELECT Nome, Email FROM cliente WHERE idCliente > 5",
+        "Consulta com JOIN":      "SELECT produto.Nome, categoria.Descricao FROM Produto produto JOIN Categoria categoria ON produto.Categoria_idCategoria = categoria.idCategoria",
+        "Consulta Complexa":      (
+            "SELECT cliente.Nome, pedido.idPedido, pedido.DataPedido, Status.Descricao, pedido.ValorTotalPedido, produto.QuantEstoque "
+            "FROM Cliente "
+            "JOIN pedido ON cliente.idCliente = pedido.Cliente_idCliente "
+            "JOIN Status ON Status.idStatus = pedido.Status_idStatus "
+            "JOIN pedido_has_produto ON pedido.idPedido = pedido_has_produto.Pedido_idPedido "
+            "JOIN produto ON produto.idProduto = pedido_has_produto.Produto_idProduto "
+            "WHERE Status.Descricao = 'Aberto' AND cliente.TipoCliente_idTipoCliente = 1 "
+            "AND pedido.ValorTotalPedido = 0 AND produto.QuantEstoque > 0"
         )
+    }
+    escolha = st.selectbox("Selecione um exemplo:", list(example_queries.keys()))
+    if st.button("Carregar Exemplo"):
+        st.session_state.sql_query = example_queries[escolha]
 
-    # Desenha arestas (ligações entre nós)
-    nx.draw_networkx_edges(G, pos, arrows=True, arrowsize=18, width=1.6, ax=ax)
+# --- Área principal: entrada SQL ---
+sql_query = st.text_area(
+    "Digite sua consulta SQL:",
+    value=st.session_state.sql_query or "",
+    height=100
+)
 
-    # Desenha labels dos nós
-    labels = nx.get_node_attributes(G, 'label')
-    nx.draw_networkx_labels(
-        G,
-        pos,
-        labels=labels,
-        font_size=12,
-        font_family='sans-serif',
-        font_weight='bold',
-        ax=ax
-    )
+if st.button("Processar Consulta"):
+    if not sql_query.strip():
+        st.warning("Por favor, digite uma consulta SQL.")
+    else:
+        try:
+            # Limpar estados anteriores (exceto sql_query)
+            for k in (
+                'parsed_sql',
+                'relational_algebra',
+                'optimized_algebra',
+                'operator_graph',
+                'execution_plan'
+            ):
+                st.session_state[k] = None
+            # Zera as otimizações para lista vazia
+            st.session_state.ra_optimization_steps = []
 
-    # Adiciona legenda explicando as cores dos tipos de nós
-    legend_handles = [
-        mpatches.Patch(color=color, label=ntype.capitalize())
-        for ntype, color in color_map.items()
-    ]
-    ax.legend(
-        handles=legend_handles,
-        title='Tipos de Operadores',
-        loc='lower left',
-        fontsize=8,
-        title_fontsize=9,
-        frameon=True
-    )
+            # 1) Parse SQL
+            parsed = parse_sql(sql_query)
+            st.session_state.parsed_sql = parsed
 
-    # Remove os eixos para uma aparência mais limpa
-    ax.set_axis_off()
-    plt.tight_layout()
+            # 2) Converter para árvore de Álgebra Relacional original
+            orig_ra = ast_to_relational_algebra(parsed)
+            st.session_state.relational_algebra = orig_ra
 
-    # Salva a imagem em um diretório temporário
-    tmp = tempfile.gettempdir()
-    path = os.path.join(tmp, 'operator_graph.png')
-    fig.savefig(path, dpi=200, bbox_inches='tight')
-    plt.close(fig)
+            # 3) Aplicar otimizações sobre a árvore de RA
+            # ...
+            opt_ra, steps = optimize_query(parsed)
+            # Se por algum motivo não houve retorno, caia no original
+            if opt_ra is None:
+                opt_ra = orig_ra
+                steps  = ["Nenhuma otimização aplicada."]
+            st.session_state.optimized_algebra     = opt_ra
+            st.session_state.ra_optimization_steps = steps
 
-    # Retorna o grafo e o caminho da imagem gerada
-    return G, path
+            # 4) Gere sempre um grafo, mesmo que otimizado == original
+            G, path = generate_operator_graph(orig_ra, opt_ra)
+            st.session_state.operator_graph = (G, path)
+            # ...
+
+
+            # 5) Gerar o plano de execução (incluindo passos de otimização)
+            plan = get_execution_steps(orig_ra, opt_ra, G, st.session_state.ra_optimization_steps)
+            st.session_state.execution_plan = plan
+
+            st.success("Consulta processada com sucesso!")
+
+        except SQLParseError as e:
+            st.error(f"Erro ao analisar SQL: {e}")
+        except Exception as e:
+            st.error(f"Erro inesperado: {e}")
+
+# --- Aba de resultados ---
+if st.session_state.parsed_sql:
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Árvore de Álgebra Relacional",
+        "Grafo de Operadores",
+        "Plano de Execução",
+        "Detalhes da Consulta"
+    ])
+
+    # 1) Árvore de Álgebra Relacional
+    with tab1:
+        st.subheader("Árvore de Álgebra Relacional Original")
+        st.code(str(st.session_state.relational_algebra))
+
+        st.subheader("Árvore de Álgebra Relacional Otimizada")
+        for s in st.session_state.ra_optimization_steps or []:
+            st.info(s)
+        st.code(str(st.session_state.optimized_algebra))
+
+    # 2) Grafo de Operadores
+   # Aba 2: Grafo de Operadores
+    with tab2:
+        st.subheader("Grafo de Operadores")
+        if st.session_state.operator_graph:
+            G, path = st.session_state.operator_graph
+            if os.path.exists(path):
+                st.image(Image.open(path), use_container_width=True)
+            else:
+                st.error("Erro ao carregar o grafo.")
+        else:
+            st.error("Grafo não disponível.")
+
+
+    # 3) Plano de Execução
+    with tab3:
+        st.subheader("Plano de Execução")
+        for i, step in enumerate(st.session_state.execution_plan or [], start=1):
+            st.write(f"Passo {i}: {step}")
+
+    # 4) Detalhes do Parse
+    with tab4:
+        st.subheader("Detalhes da Consulta Parseada")
+        st.markdown("**SELECT**")
+        st.code(", ".join(st.session_state.parsed_sql['select']))
+        st.markdown("**FROM**")
+        st.code(", ".join(st.session_state.parsed_sql['from']))
+        if st.session_state.parsed_sql.get('joins'):
+            st.markdown("**JOINs**")
+            for j in st.session_state.parsed_sql['joins']:
+                st.code(f"JOIN {j['table']} ON {j['condition']}")
+        if st.session_state.parsed_sql.get('where'):
+            st.markdown("**WHERE**")
+            for cond in st.session_state.parsed_sql['where']:
+                st.code(cond)
+
+# --- Limpeza de arquivos temporários ---
+def cleanup():
+    if st.session_state.operator_graph:
+        try:
+            os.remove(st.session_state.operator_graph[1])
+        except FileNotFoundError:
+            pass
+
+import atexit
+atexit.register(cleanup)

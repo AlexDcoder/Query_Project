@@ -101,7 +101,7 @@ def parse_sql(sql_query):
             result['aliases'][alias.lower()] = tbl
 
     # 6.2) Extrai todos os JOINs com suas condições
-    for jm in re.finditer(r'join\s+(.*?)\s+on\s+(.*?)(?=\s+join\b|\s*$)', fj_clause, re.IGNORECASE):
+    for jm in re.finditer(r'join\s+(.*?)\s+on\s+(.*?)(?=\s+join\s+(.*?)\s+on\s+(.*?)$)', fj_clause, re.IGNORECASE):
         join_tbl_clause = jm.group(1).strip()
         join_cond       = jm.group(2).strip()
 
